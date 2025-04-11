@@ -14,75 +14,75 @@ dotenv.config();
 // Mezon client setup
 const client = new MezonClient("736f556c6f764f685162756e53387651");
 
-// Helper function to find a guild by name or ID
-async function findClan(guildIdentifier?: string) {
-  if (!guildIdentifier) {
-    // If no guild specified and bot is only in one guild, use that
+// Helper function to find a clan by name or ID
+async function findClan(clanId?: string) {
+  if (!clanId) {
+    // If no clan specified and bot is only in one clan, use that
     if (client.clans.size === 1) {
       return client.clans.first()!;
     }
     // List available clans
-    const guildList = Array.from(client.clans.values())
+    const clanList = Array.from(client.clans.values())
       .map(g => `"${g.name}"`).join(', ');
-    throw new Error(`Bot is in multiple servers. Please specify server name or ID. Available servers: ${guildList}`);
+    throw new Error(`Bot is in multiple servers. Please specify server name or ID. Available servers: ${clanList}`);
   }
 
   // Try to fetch by ID first
   try {
-    const guild = await client.clans.fetch(guildIdentifier);
-    if (guild) return guild;
+    const clan = await client.clans.fetch(clanId);
+    if (clan) return clan;
   } catch {
     // If ID fetch fails, search by name
     const clans = client.clans.filter(
-      g => g.name.toLowerCase() === guildIdentifier.toLowerCase()
+      g => g.name.toLowerCase() === clanId.toLowerCase()
     );
     
     if (clans.size === 0) {
-      const availableGuilds = Array.from(client.clans.values())
+      const availableClans = Array.from(client.clans.values())
         .map(g => `"${g.name}"`).join(', ');
-      throw new Error(`Clan "${guildIdentifier}" not found. Available servers: ${availableGuilds}`);
+      throw new Error(`Clan "${clanId}" not found. Available servers: ${availableClans}`);
     }
     if (clans.size > 1) {
-      const guildList = clans.map(g => `${g.name} (ID: ${g.id})`).join(', ');
-      throw new Error(`Multiple servers found with name "${guildIdentifier}": ${guildList}. Please specify the server ID.`);
+      const clanList = clans.map(g => `${g.name} (ID: ${g.id})`).join(', ');
+      throw new Error(`Multiple servers found with name "${clanId}": ${clanList}. Please specify the server ID.`);
     }
     return clans.first()!;
   }
-  throw new Error(`Clan "${guildIdentifier}" not found`);
+  throw new Error(`Clan "${clanId}" not found`);
 }
 
-// Helper function to find a channel by name or ID within a specific guild
-async function findChannel(channelIdentifier: string, guildIdentifier?: string): Promise<TextChannel> {
-  const guild = await findClan(guildIdentifier);
+// Helper function to find a channel by name or ID within a specific clan
+async function findChannel(channelId: string, clanId?: string): Promise<TextChannel> {
+  const clan = await findClan(clanId);
   
   // First try to fetch by ID
   try {
-    const channel = await client.channels.fetch(channelIdentifier);
-    if (channel instanceof TextChannel && channel.guild.id === guild.id) {
+    const channel = await client.channels.fetch(channelId);
+    if (channel instanceof TextChannel && channel.clan.id === clan.id) {
       return channel;
     }
   } catch {
-    // If fetching by ID fails, search by name in the specified guild
-    const channels = guild.channels.cache.filter(
+    // If fetching by ID fails, search by name in the specified clan
+    const channels = clan.channels.cache.filter(
       (channel): channel is TextChannel =>
         channel instanceof TextChannel &&
-        (channel.name.toLowerCase() === channelIdentifier.toLowerCase() ||
-         channel.name.toLowerCase() === channelIdentifier.toLowerCase().replace('#', ''))
+        (channel.name.toLowerCase() === channelId.toLowerCase() ||
+         channel.name.toLowerCase() === channelId.toLowerCase().replace('#', ''))
     );
 
     if (channels.size === 0) {
-      const availableChannels = guild.channels.cache
+      const availableChannels = clan.channels.cache
         .filter((c): c is TextChannel => c instanceof TextChannel)
         .map(c => `"#${c.name}"`).join(', ');
-      throw new Error(`Channel "${channelIdentifier}" not found in server "${guild.name}". Available channels: ${availableChannels}`);
+      throw new Error(`Channel "${channelId}" not found in server "${clan.name}". Available channels: ${availableChannels}`);
     }
     if (channels.size > 1) {
       const channelList = channels.map(c => `#${c.name} (${c.id})`).join(', ');
-      throw new Error(`Multiple channels found with name "${channelIdentifier}" in server "${guild.name}": ${channelList}. Please specify the channel ID.`);
+      throw new Error(`Multiple channels found with name "${channelId}" in server "${clan.name}": ${channelList}. Please specify the channel ID.`);
     }
     return channels.first()!;
   }
-  throw new Error(`Channel "${channelIdentifier}" is not a text channel or not found in server "${guild.name}"`);
+  throw new Error(`Channel "${channelId}" is not a text channel or not found in server "${clan.name}"`);
 }
 
 // Updated validation schemas
@@ -171,26 +171,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "send-message": {
-        const { channel: channelIdentifier, message } = SendMessageSchema.parse(args);
-        const channel = await findChannel(channelIdentifier);
+        const { channel: channelId, message } = SendMessageSchema.parse(args);
+        const channel = await findChannel(channelId);
         
         const sent = await channel.send(message);
         return {
           content: [{
             type: "text",
-            text: `Message sent successfully to #${channel.name} in ${channel.guild.name}. Message ID: ${sent.id}`,
+            text: `Message sent successfully to #${channel.name} in ${channel.clan.name}. Message ID: ${sent.id}`,
           }],
         };
       }
 
       case "read-messages": {
-        const { channel: channelIdentifier, limit } = ReadMessagesSchema.parse(args);
-        const channel = await findChannel(channelIdentifier);
+        const { channel: channelId, limit } = ReadMessagesSchema.parse(args);
+        const channel = await findChannel(channelId);
         
         const messages = await channel.messages.fetch({ limit });
         const formattedMessages = Array.from(messages.values()).map(msg => ({
           channel: `#${channel.name}`,
-          server: channel.guild.name,
+          server: channel.clan.name,
           author: msg.author.tag,
           content: msg.content,
           timestamp: msg.createdAt.toISOString(),
