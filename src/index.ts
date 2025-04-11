@@ -15,7 +15,7 @@ dotenv.config();
 const client = new MezonClient("736f556c6f764f685162756e53387651");
 
 // Helper function to find a guild by name or ID
-async function findGuild(guildIdentifier?: string) {
+async function findClan(guildIdentifier?: string) {
   if (!guildIdentifier) {
     // If no guild specified and bot is only in one guild, use that
     if (client.guilds.cache.size === 1) {
@@ -53,7 +53,7 @@ async function findGuild(guildIdentifier?: string) {
 
 // Helper function to find a channel by name or ID within a specific guild
 async function findChannel(channelIdentifier: string, guildIdentifier?: string): Promise<TextChannel> {
-  const guild = await findGuild(guildIdentifier);
+  const guild = await findClan(guildIdentifier);
   
   // First try to fetch by ID
   try {
