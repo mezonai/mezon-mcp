@@ -6,7 +6,7 @@ A Model Context Protocol (MCP) server that enables LLMs to interact with Mezon c
 
 - Send messages to Mezon channels
 - Read recent messages from channels
-- Automatic server and channel discovery
+- Automatic clan and channel discovery
 - Support for both channel names and IDs
 - Proper error handling and validation
 
@@ -14,7 +14,7 @@ A Model Context Protocol (MCP) server that enables LLMs to interact with Mezon c
 
 - Node.js 16.x or higher
 - A Mezon bot token
-- The bot must be invited to your server with proper permissions:
+- The bot must be invited to your clan with proper permissions:
   - Read Messages/View Channels
   - Send Messages
   - Read Message History
@@ -23,8 +23,8 @@ A Model Context Protocol (MCP) server that enables LLMs to interact with Mezon c
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/mezonmcp.git
-cd mezonmcp
+git clone git@github.com:nccasia/mezon-mcp.git
+cd mezon-mcp
 ```
 
 2. Install dependencies:
@@ -34,7 +34,7 @@ npm install
 
 3. Create a `.env` file in the root directory with your Mezon bot token:
 ```
-MEZON_TOKEN=your_discord_bot_token_here
+MEZON_TOKEN=your_bot_token_here
 ```
 
 4. Build the server:
@@ -54,9 +54,9 @@ npm run build
   "mcpServers": {
     "mezon": {
       "command": "node",
-      "args": ["path/to/mezonmcp/build/index.js"],
+      "args": ["path/to/mezon-mcp/build/index.js"],
       "env": {
-        "MEZON_TOKEN": "your_discord_bot_token_here"
+        "MEZON_TOKEN": "your_bot_token_here"
       }
     }
   }
@@ -71,7 +71,7 @@ npm run build
 Sends a message to a specified Mezon channel.
 
 Parameters:
-- `server` (optional): Server name or ID (required if bot is in multiple servers)
+- `clan` (optional): Clan ID (required if bot is in multiple clans)
 - `channel`: Channel name (e.g., "general") or ID
 - `message`: Message content to send
 
@@ -87,7 +87,7 @@ Example:
 Reads recent messages from a specified Mezon channel.
 
 Parameters:
-- `server` (optional): Server name or ID (required if bot is in multiple servers)
+- `clan` (optional): clan ID (required if bot is in multiple clans)
 - `channel`: Channel name (e.g., "general") or ID
 - `limit` (optional): Number of messages to fetch (default: 50, max: 100)
 
