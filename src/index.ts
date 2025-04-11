@@ -1,4 +1,4 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { Clan } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import dotenv from 'dotenv';
 import {
@@ -18,37 +18,37 @@ const client = new MezonClient("736f556c6f764f685162756e53387651");
 async function findClan(guildIdentifier?: string) {
   if (!guildIdentifier) {
     // If no guild specified and bot is only in one guild, use that
-    if (client.guilds.cache.size === 1) {
-      return client.guilds.cache.first()!;
+    if (client.clans.size === 1) {
+      return client.clans.first()!;
     }
-    // List available guilds
-    const guildList = Array.from(client.guilds.cache.values())
+    // List available clans
+    const guildList = Array.from(client.clans.values())
       .map(g => `"${g.name}"`).join(', ');
     throw new Error(`Bot is in multiple servers. Please specify server name or ID. Available servers: ${guildList}`);
   }
 
   // Try to fetch by ID first
   try {
-    const guild = await client.guilds.fetch(guildIdentifier);
+    const guild = await client.clans.fetch(guildIdentifier);
     if (guild) return guild;
   } catch {
     // If ID fetch fails, search by name
-    const guilds = client.guilds.cache.filter(
+    const clans = client.clans.filter(
       g => g.name.toLowerCase() === guildIdentifier.toLowerCase()
     );
     
-    if (guilds.size === 0) {
-      const availableGuilds = Array.from(client.guilds.cache.values())
+    if (clans.size === 0) {
+      const availableGuilds = Array.from(client.clans.values())
         .map(g => `"${g.name}"`).join(', ');
-      throw new Error(`Server "${guildIdentifier}" not found. Available servers: ${availableGuilds}`);
+      throw new Error(`Clan "${guildIdentifier}" not found. Available servers: ${availableGuilds}`);
     }
-    if (guilds.size > 1) {
-      const guildList = guilds.map(g => `${g.name} (ID: ${g.id})`).join(', ');
+    if (clans.size > 1) {
+      const guildList = clans.map(g => `${g.name} (ID: ${g.id})`).join(', ');
       throw new Error(`Multiple servers found with name "${guildIdentifier}": ${guildList}. Please specify the server ID.`);
     }
-    return guilds.first()!;
+    return clans.first()!;
   }
-  throw new Error(`Server "${guildIdentifier}" not found`);
+  throw new Error(`Clan "${guildIdentifier}" not found`);
 }
 
 // Helper function to find a channel by name or ID within a specific guild
@@ -87,13 +87,13 @@ async function findChannel(channelIdentifier: string, guildIdentifier?: string):
 
 // Updated validation schemas
 const SendMessageSchema = z.object({
-  server: z.string().optional().describe('Server name or ID (optional if bot is only in one server)'),
+  server: z.string().optional().describe('Clan name or ID (optional if bot is only in one server)'),
   channel: z.string().describe('Channel name (e.g., "general") or ID'),
   message: z.string(),
 });
 
 const ReadMessagesSchema = z.object({
-  server: z.string().optional().describe('Server name or ID (optional if bot is only in one server)'),
+  server: z.string().optional().describe('Clan name or ID (optional if bot is only in one server)'),
   channel: z.string().describe('Channel name (e.g., "general") or ID'),
   limit: z.number().min(1).max(100).default(50),
 });
@@ -123,7 +123,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             server: {
               type: "string",
-              description: 'Server name or ID (optional if bot is only in one server)',
+              description: 'Clan name or ID (optional if bot is only in one server)',
             },
             channel: {
               type: "string",
@@ -145,7 +145,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             server: {
               type: "string",
-              description: 'Server name or ID (optional if bot is only in one server)',
+              description: 'Clan name or ID (optional if bot is only in one server)',
             },
             channel: {
               type: "string",
@@ -239,7 +239,7 @@ async function main() {
     // Start MCP server
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Mezon MCP Server running on stdio");
+    console.error("Mezon MCP Clan running on stdio");
   } catch (error) {
     console.error("Fatal error in main():", error);
     process.exit(1);
