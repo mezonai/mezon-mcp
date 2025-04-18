@@ -1,12 +1,13 @@
-import { Clan } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { z } from 'zod';
+import { z } from "zod";
 import { MezonClient } from "mezon-sdk";
+import { TextChannel } from "mezon-sdk/dist/cjs/mezon-client/structures/TextChannel.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -23,8 +24,11 @@ async function findClan(clanId?: string) {
     }
     // List available clans
     const clanList = Array.from(client.clans.values())
-      .map(g => `"${g.name}"`).join(', ');
-    throw new Error(`Bot is in multiple servers. Please specify server name or ID. Available servers: ${clanList}`);
+      .map((g) => `"${g.name}"`)
+      .join(", ");
+    throw new Error(
+      `Bot is in multiple servers. Please specify server name or ID. Available servers: ${clanList}`
+    );
   }
 
   // Try to fetch by ID first
@@ -34,17 +38,22 @@ async function findClan(clanId?: string) {
   } catch {
     // If ID fetch fails, search by name
     const clans = client.clans.filter(
-      g => g.name.toLowerCase() === clanId.toLowerCase()
+      (g) => g.name.toLowerCase() === clanId.toLowerCase()
     );
-    
+
     if (clans.size === 0) {
       const availableClans = Array.from(client.clans.values())
-        .map(g => `"${g.name}"`).join(', ');
-      throw new Error(`Clan "${clanId}" not found. Available servers: ${availableClans}`);
+        .map((g) => `"${g.name}"`)
+        .join(", ");
+      throw new Error(
+        `Clan "${clanId}" not found. Available servers: ${availableClans}`
+      );
     }
     if (clans.size > 1) {
-      const clanList = clans.map(g => `${g.name} (ID: ${g.id})`).join(', ');
-      throw new Error(`Multiple servers found with name "${clanId}": ${clanList}. Please specify the server ID.`);
+      const clanList = clans.map((g) => `${g.name} (ID: ${g.id})`).join(", ");
+      throw new Error(
+        `Multiple servers found with name "${clanId}": ${clanList}. Please specify the server ID.`
+      );
     }
     return clans.first()!;
   }
@@ -52,9 +61,12 @@ async function findClan(clanId?: string) {
 }
 
 // Helper function to find a channel by name or ID within a specific clan
-async function findChannel(channelId: string, clanId?: string): Promise<TextChannel> {
+async function findChannel(
+  channelId: string,
+  clanId?: string
+): Promise<TextChannel> {
   const clan = await findClan(clanId);
-  
+
   // First try to fetch by ID
   try {
     const channel = await client.channels.fetch(channelId);
@@ -66,34 +78,50 @@ async function findChannel(channelId: string, clanId?: string): Promise<TextChan
     const channels = clan.channels.cache.filter(
       (channel): channel is TextChannel =>
         channel instanceof TextChannel &&
-        (channel.name.toLowerCase() === channelId.toLowerCase() ||
-         channel.name.toLowerCase() === channelId.toLowerCase().replace('#', ''))
+        (channel.name?.toLowerCase() === channelId.toLowerCase() ||
+          channel.name?.toLowerCase() ===
+            channelId.toLowerCase().replace("#", ""))
     );
 
     if (channels.size === 0) {
       const availableChannels = clan.channels.cache
         .filter((c): c is TextChannel => c instanceof TextChannel)
-        .map(c => `"#${c.name}"`).join(', ');
-      throw new Error(`Channel "${channelId}" not found in server "${clan.name}". Available channels: ${availableChannels}`);
+        .map((c) => `"#${c.name}"`)
+        .join(", ");
+      throw new Error(
+        `Channel "${channelId}" not found in server "${clan.name}". Available channels: ${availableChannels}`
+      );
     }
     if (channels.size > 1) {
-      const channelList = channels.map(c => `#${c.name} (${c.id})`).join(', ');
-      throw new Error(`Multiple channels found with name "${channelId}" in server "${clan.name}": ${channelList}. Please specify the channel ID.`);
+      const channelList = channels
+        .map((c) => `#${c.name} (${c.id})`)
+        .join(", ");
+      throw new Error(
+        `Multiple channels found with name "${channelId}" in server "${clan.name}": ${channelList}. Please specify the channel ID.`
+      );
     }
     return channels.first()!;
   }
-  throw new Error(`Channel "${channelId}" is not a text channel or not found in server "${clan.name}"`);
+  throw new Error(
+    `Channel "${channelId}" is not a text channel or not found in server "${clan.name}"`
+  );
 }
 
 // Updated validation schemas
 const SendMessageSchema = z.object({
-  server: z.string().optional().describe('Clan name or ID (optional if bot is only in one server)'),
+  server: z
+    .string()
+    .optional()
+    .describe("Clan name or ID (optional if bot is only in one server)"),
   channel: z.string().describe('Channel name (e.g., "general") or ID'),
   message: z.string(),
 });
 
 const ReadMessagesSchema = z.object({
-  server: z.string().optional().describe('Clan name or ID (optional if bot is only in one server)'),
+  server: z
+    .string()
+    .optional()
+    .describe("Clan name or ID (optional if bot is only in one server)"),
   channel: z.string().describe('Channel name (e.g., "general") or ID'),
   limit: z.number().min(1).max(100).default(50),
 });
@@ -123,7 +151,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             server: {
               type: "string",
-              description: 'Clan name or ID (optional if bot is only in one server)',
+              description:
+                "Clan name or ID (optional if bot is only in one server)",
             },
             channel: {
               type: "string",
@@ -145,7 +174,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {
             server: {
               type: "string",
-              description: 'Clan name or ID (optional if bot is only in one server)',
+              description:
+                "Clan name or ID (optional if bot is only in one server)",
             },
             channel: {
               type: "string",
@@ -173,34 +203,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "send-message": {
         const { channel: channelId, message } = SendMessageSchema.parse(args);
         const channel = await findChannel(channelId);
-        
-        const sent = await channel.send(message);
+
+        const sent = await channel.send({ t: message });
         return {
-          content: [{
-            type: "text",
-            text: `Message sent successfully to #${channel.name} in ${channel.clan.name}. Message ID: ${sent.id}`,
-          }],
+          content: [
+            {
+              type: "text",
+              text: `Message sent successfully to #${channel.name} in ${channel.clan.name}. Message ID: ${sent.message_id}`,
+            },
+          ],
         };
       }
 
       case "read-messages": {
         const { channel: channelId, limit } = ReadMessagesSchema.parse(args);
         const channel = await findChannel(channelId);
-        
-        const messages = await channel.messages.fetch({ limit });
-        const formattedMessages = Array.from(messages.values()).map(msg => ({
+
+        const messages = channel.messages.values();
+        const formattedMessages = Array.from(messages).map((msg) => ({
           channel: `#${channel.name}`,
           server: channel.clan.name,
-          author: msg.author.tag,
+          author: msg.sender_id,
           content: msg.content,
-          timestamp: msg.createdAt.toISOString(),
+          // timestamp: msg.createdAt.toISOString(), // update on sdk
         }));
 
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(formattedMessages, null, 2),
-          }],
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(formattedMessages, null, 2),
+            },
+          ],
         };
       }
 
@@ -220,8 +254,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Mezon client login and error handling
-client.once('ready', () => {
-  console.error('Mezon bot is ready!');
+client.once("ready", () => {
+  console.error("Mezon bot is ready!");
 });
 
 // Start the server
@@ -229,12 +263,12 @@ async function main() {
   // Check for Mezon token
   const token = process.env.MEZON_TOKEN;
   if (!token) {
-    throw new Error('MEZON_TOKEN environment variable is not set');
+    throw new Error("MEZON_TOKEN environment variable is not set");
   }
-  
+
   try {
     // Login to Mezon
-    await client.login(token);
+    await client.login();
 
     // Start MCP server
     const transport = new StdioServerTransport();
