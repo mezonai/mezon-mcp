@@ -11,9 +11,13 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 // Load environment variables
 dotenv.config();
+const token = process.env.MEZON_TOKEN;
+if (!token) {
+  throw new Error("MEZON_TOKEN environment variable is not set");
+}
 
 // Mezon client setup
-const client = new MezonClient("736f556c6f764f685162756e53387651");
+const client = new MezonClient(token);
 
 // Helper function to find a clan by name or ID
 async function findClan(clanId?: string) {
@@ -260,12 +264,6 @@ client.once("ready", () => {
 
 // Start the server
 async function main() {
-  // Check for Mezon token
-  const token = process.env.MEZON_TOKEN;
-  if (!token) {
-    throw new Error("MEZON_TOKEN environment variable is not set");
-  }
-
   try {
     // Login to Mezon
     await client.login();
