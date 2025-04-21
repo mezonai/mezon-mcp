@@ -11,6 +11,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
 // Load environment variables
 dotenv.config();
+const token = process.env.MEZON_TOKEN;
+if (!token) {
+  throw new Error("MEZON_TOKEN environment variable is not set");
+}
 
 // Mezon client   
 const client = new MezonClient("4b5a46716d53325735734567476a5a31");
