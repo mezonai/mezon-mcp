@@ -16,11 +16,12 @@ if (!token) {
   throw new Error("MEZON_TOKEN environment variable is not set");
 }
 
-// Mezon client setup
-const client = new MezonClient(token);
+// Mezon client   
+const client = new MezonClient(process.env.MEZON_TOKEN);
 
 // Helper function to find a clan by name or ID
 async function findClan(clanId?: string) {
+  console.error("clan Id", clanId);
   if (!clanId) {
     // If no clan specified and bot is only in one clan, use that
     if (client.clans.size === 1) {
@@ -92,6 +93,7 @@ async function findChannel(
         .filter((c): c is TextChannel => c instanceof TextChannel)
         .map((c) => `"#${c.name}"`)
         .join(", ");
+
       throw new Error(
         `Channel "${channelId}" not found in server "${clan.name}". Available channels: ${availableChannels}`
       );
@@ -201,14 +203,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-
   try {
     switch (name) {
       case "send-message": {
-        const { channel: channelId, message } = SendMessageSchema.parse(args);
-        const channel = await findChannel(channelId);
+        const {
+          server: serverId,
+          channel: channelId,
+          message,
+        } = SendMessageSchema.parse(args);
+        const channel = await findChannel(channelId, serverId);
 
         const sent = await channel.send({ t: message });
+
+        console.error("Message sent:", sent);
         return {
           content: [
             {
@@ -220,10 +227,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "read-messages": {
-        const { channel: channelId, limit } = ReadMessagesSchema.parse(args);
-        const channel = await findChannel(channelId);
+        const {
+          server: serverId,
+          channel: channelId,
+          limit,
+        } = ReadMessagesSchema.parse(args);
+        const channel = await findChannel(channelId, serverId);
 
         const messages = channel.messages.values();
+        console.error("messages read", messages);
         const formattedMessages = Array.from(messages).map((msg) => ({
           channel: `#${channel.name}`,
           server: channel.clan.name,
@@ -231,6 +243,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: msg.content,
           // timestamp: msg.createdAt.toISOString(), // update on sdk
         }));
+
+        console.error("formattedMessages", formattedMessages);
 
         return {
           content: [
@@ -258,24 +272,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Mezon client login and error handling
+
 client.once("ready", () => {
-  console.error("Mezon bot is ready!");
+  console.error("✅ Mezon bot is ready!");
+
+  if (client.clans.size === 0) {
+    console.error("⚠️ Bot chưa tham gia clan nào.");
+    return;
+  }
+  console.error("📋 Bot đang ở trong các clan:");
+  for (const clan of client.clans.values()) {
+    console.error(`- ${clan.name} (ID: ${clan.id})`);
+    const textChannels = Array.from(clan.channels.cache.values()).filter(
+      (c) => c instanceof TextChannel
+    );
+
+    if (textChannels.length > 0) {
+      console.error(`  📺 Các kênh text:`);
+      for (const channel of textChannels) {
+        console.error(`- #${channel.name} (ID: ${channel.id})`);
+      }
+    } else {
+      console.error("  ⚠️ Không có kênh text nào.");
+    }
+  }
+});
+
+client.onChannelMessage(async (data) => {
+  const clan = await client.clans.fetch(data?.clan_id!);
+  const textChannels = Array.from(clan.channels.cache.values()).filter(
+    (c) => c instanceof TextChannel
+  );
+
+  if (textChannels.length > 0) {
+    console.error(`  📺 Các kênh text:`);
+    for (const channel of textChannels) {
+      console.error(`    - #${channel.name} (ID: ${channel.id})`);
+    }
+  } else {
+    console.error("  ⚠️ Không có kênh text nào.");
+  }
 });
 
 // Start the server
 async function main() {
   try {
-    // Login to Mezon
-    await client.login();
+    const token = process.env.MEZON_TOKEN;
+    if (!token) {
+      throw new Error("MEZON_TOKEN environment variable is not set");
+    }
+    try {
+      // Login to Mezon
+      await client.login();
 
-    // Start MCP server
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Mezon MCP Clan running on stdio");
-  } catch (error) {
-    console.error("Fatal error in main():", error);
-    process.exit(1);
-  }
+      // Start MCP server
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      console.error("Mezon MCP Clan running on stdio");
+    } catch (error) {
+      console.error("Fatal error in main():", error);
+      process.exit(1);
+    }
+  } catch (error) {}
 }
 
 main();
