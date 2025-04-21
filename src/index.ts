@@ -17,8 +17,7 @@ if (!token) {
 }
 
 // Mezon client   
-const client = new MezonClient("4b5a46716d53325735734567476a5a31");
-// 736f556c6f764f685162756e53387651
+const client = new MezonClient(process.env.MEZON_TOKEN);
 
 // Helper function to find a clan by name or ID
 async function findClan(clanId?: string) {
