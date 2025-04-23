@@ -8,6 +8,7 @@ import { z } from "zod";
 import { MezonClient } from "mezon-sdk";
 import { TextChannel } from "mezon-sdk/dist/cjs/mezon-client/structures/TextChannel.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { processWithGemini } from "./gemini.js";
 
 // Load environment variables
 dotenv.config();
@@ -16,12 +17,18 @@ if (!token) {
   throw new Error("MEZON_TOKEN environment variable is not set");
 }
 
-// Mezon client   
+// Mezon client
 const client = new MezonClient(process.env.MEZON_TOKEN);
+
+
+
+
+
+// Thêm biến để lưu trữ tin nhắn đã xử lý
+const processedMessages = new Set<string>();
 
 // Helper function to find a clan by name or ID
 async function findClan(clanId?: string) {
-  console.error("clan Id", clanId);
   if (!clanId) {
     // If no clan specified and bot is only in one clan, use that
     if (client.clans.size === 1) {
@@ -85,7 +92,7 @@ async function findChannel(
         channel instanceof TextChannel &&
         (channel.name?.toLowerCase() === channelId.toLowerCase() ||
           channel.name?.toLowerCase() ===
-            channelId.toLowerCase().replace("#", ""))
+          channelId.toLowerCase().replace("#", ""))
     );
 
     if (channels.size === 0) {
@@ -196,6 +203,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["channel"],
         },
       },
+      {
+        name: "ask-gemini",
+        description: "Gửi câu hỏi tới Gemini AI và nhận câu trả lời",
+        inputSchema: {
+          type: "object",
+          properties: {
+            message: {
+              type: "string",
+              description: "Nội dung câu hỏi dành cho Gemini",
+            },
+            server: {
+              type: "string",
+              description: "ID hoặc tên clan (tùy chọn)",
+            },
+            channel: {
+              type: "string",
+              description: "Tên hoặc ID kênh Mezon để gửi kết quả",
+            },
+          },
+          required: ["message", "channel"],
+        },
+      },
     ],
   };
 });
@@ -212,10 +241,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           message,
         } = SendMessageSchema.parse(args);
         const channel = await findChannel(channelId, serverId);
-
         const sent = await channel.send({ t: message });
-
-        console.error("Message sent:", sent);
         return {
           content: [
             {
@@ -235,22 +261,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const channel = await findChannel(channelId, serverId);
 
         const messages = channel.messages.values();
-        console.error("messages read", messages);
         const formattedMessages = Array.from(messages).map((msg) => ({
           channel: `#${channel.name}`,
           server: channel.clan.name,
           author: msg.sender_id,
           content: msg.content,
-          // timestamp: msg.createdAt.toISOString(), // update on sdk
         }));
-
-        console.error("formattedMessages", formattedMessages);
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify(formattedMessages, null, 2),
+            },
+          ],
+        };
+      }
+      case "ask-gemini": {
+        const {
+          server: serverId,
+          channel: channelId,
+          message,
+        } = SendMessageSchema.parse(args);
+
+        const channel = await findChannel(channelId, serverId);
+        const reply = await processWithGemini(message);
+
+        await channel.send({ t: reply });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `✅ Gemini trả lời đã được gửi đến #${channel.name}.\n📝 Nội dung: ${reply}`,
             },
           ],
         };
@@ -271,16 +313,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Mezon client login and error handling
-
 client.once("ready", () => {
   console.error("✅ Mezon bot is ready!");
 
   if (client.clans.size === 0) {
-    console.error("⚠️ Bot chưa tham gia clan nào.");
+    console.error("⚠️ Bot has not joined any clan yet.");
     return;
   }
-  console.error("📋 Bot đang ở trong các clan:");
+  console.error("📋 Bots are in clans:");
   for (const clan of client.clans.values()) {
     console.error(`- ${clan.name} (ID: ${clan.id})`);
     const textChannels = Array.from(clan.channels.cache.values()).filter(
@@ -288,14 +328,14 @@ client.once("ready", () => {
     );
 
     if (textChannels.length > 0) {
-      console.error(`  📺 Các kênh text:`);
+      console.error(`  📺 Text channels:`);
       for (const channel of textChannels) {
         console.error(`- #${channel.name} (ID: ${channel.id})`);
       }
     } else {
-      console.error("  ⚠️ Không có kênh text nào.");
+      console.error("  ⚠️ There are no text channels.");
     }
-  }
+  } 
 });
 
 client.onChannelMessage(async (data) => {
@@ -305,14 +345,16 @@ client.onChannelMessage(async (data) => {
   );
 
   if (textChannels.length > 0) {
-    console.error(`  📺 Các kênh text:`);
+    console.error(`  📺 Text channels::`);
     for (const channel of textChannels) {
       console.error(`    - #${channel.name} (ID: ${channel.id})`);
     }
   } else {
-    console.error("  ⚠️ Không có kênh text nào.");
+    console.error("⚠️No text channels available.");
   }
 });
+
+
 
 // Start the server
 async function main() {
@@ -333,7 +375,7 @@ async function main() {
       console.error("Fatal error in main():", error);
       process.exit(1);
     }
-  } catch (error) {}
+  } catch (error) { }
 }
 
 main();
