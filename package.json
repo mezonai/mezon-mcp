@@ -10,7 +10,7 @@
     "dev": "tsc -w",
     "test": "echo \"Error: no test specified\" && exit 1",
     "bot": "tsc && node build/bot-test.js",
-    "dev:bot": "nodemon --watch src --ext ts,js --exec \"npm run bot-test\"",
+    "dev:bot": "nodemon --watch src --ext ts,js --exec \"npm run bot\"",
     "dev:server": "nodemon --watch src --ext ts,js --exec \" npm run build && npm run start\""
   },
   "keywords": [
@@ -22,6 +22,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.8.0",
+    "@google/generative-ai": "^0.24.0",
     "@modelcontextprotocol/sdk": "^1.2.0",
     "dotenv": "^16.4.7",
     "mezon-sdk": "^2.7.84",
