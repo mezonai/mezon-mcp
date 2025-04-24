@@ -8,7 +8,7 @@ import { z } from "zod";
 import { MezonClient } from "mezon-sdk";
 import { TextChannel } from "mezon-sdk/dist/cjs/mezon-client/structures/TextChannel.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { processWithGemini } from "./gemini.js";
+import { sendMessageAndGetResponse } from "./gemini.js";
 
 // Load environment variables
 dotenv.config();
@@ -19,10 +19,6 @@ if (!token) {
 
 // Mezon client
 const client = new MezonClient(process.env.MEZON_TOKEN);
-
-
-
-
 
 // Thêm biến để lưu trữ tin nhắn đã xử lý
 const processedMessages = new Set<string>();
@@ -92,7 +88,7 @@ async function findChannel(
         channel instanceof TextChannel &&
         (channel.name?.toLowerCase() === channelId.toLowerCase() ||
           channel.name?.toLowerCase() ===
-          channelId.toLowerCase().replace("#", ""))
+            channelId.toLowerCase().replace("#", ""))
     );
 
     if (channels.size === 0) {
@@ -137,6 +133,16 @@ const ReadMessagesSchema = z.object({
     .describe("Clan name or ID (optional if bot is only in one server)"),
   channel: z.string().describe('Channel name (e.g., "general") or ID'),
   limit: z.number().min(1).max(100).default(50),
+});
+
+const AskGeminiSchema = z.object({
+  server: z
+    .string()
+    .optional()
+    .describe("Clan name or ID (optional if bot is only in one server)"),
+  channel: z.string().describe('Channel name (e.g., "general") or ID'),
+  question: z.string().describe("The question to ask Gemini"),
+  messages: z.any().describe("List of messages to use as context"),
 });
 
 // Create server instance
@@ -205,24 +211,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "ask-gemini",
-        description: "Gửi câu hỏi tới Gemini AI và nhận câu trả lời",
+        description: "Ask Gemini AI about infomation in a channel",
         inputSchema: {
           type: "object",
           properties: {
-            message: {
-              type: "string",
-              description: "Nội dung câu hỏi dành cho Gemini",
-            },
             server: {
               type: "string",
-              description: "ID hoặc tên clan (tùy chọn)",
+              description:
+                "Clan name or ID (optional if bot is only in one server)",
             },
             channel: {
               type: "string",
-              description: "Tên hoặc ID kênh Mezon để gửi kết quả",
+              description: "Channel name or ID",
             },
+            question: {
+              type: "string",
+              description: "The question to ask Gemini",
+            },
+            tools: {
+              type: "array",
+              description: "List of tools to use",
+            },
+            messages: {
+              type: "array",
+              description: "List of messages to use as context",
+            },
+            required: ["channel", "question", "messages"],
           },
-          required: ["message", "channel"],
         },
       },
     ],
@@ -253,6 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "read-messages": {
+        
         const {
           server: serverId,
           channel: channelId,
@@ -261,11 +277,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const channel = await findChannel(channelId, serverId);
 
         const messages = channel.messages.values();
+
         const formattedMessages = Array.from(messages).map((msg) => ({
           channel: `#${channel.name}`,
           server: channel.clan.name,
           author: msg.sender_id,
           content: msg.content,
+          channel_id: channel.id,
         }));
 
         return {
@@ -277,22 +295,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
       }
+
       case "ask-gemini": {
         const {
           server: serverId,
           channel: channelId,
-          message,
-        } = SendMessageSchema.parse(args);
+          question,
+          messages,
+        } = AskGeminiSchema.parse(args);
 
-        const channel = await findChannel(channelId, serverId);
-        const reply = await processWithGemini(message);
+        const channelMessages = messages.slice(0, -1);
+        console.error("Formatted messages:", channelMessages);
+        const response = await sendMessageAndGetResponse(
+          question,
+          channelMessages
+        );
 
-        await channel.send({ t: reply });
         return {
           content: [
             {
               type: "text",
-              text: `✅ Gemini trả lời đã được gửi đến #${channel.name}.\n📝 Nội dung: ${reply}`,
+              text: response,
             },
           ],
         };
@@ -335,28 +358,27 @@ client.once("ready", () => {
     } else {
       console.error("  ⚠️ There are no text channels.");
     }
-  } 
-});
-
-client.onChannelMessage(async (data) => {
-  const clan = await client.clans.fetch(data?.clan_id!);
-  const textChannels = Array.from(clan.channels.cache.values()).filter(
-    (c) => c instanceof TextChannel
-  );
-
-  if (textChannels.length > 0) {
-    console.error(`  📺 Text channels::`);
-    for (const channel of textChannels) {
-      console.error(`    - #${channel.name} (ID: ${channel.id})`);
-    }
-  } else {
-    console.error("⚠️No text channels available.");
   }
 });
 
+client.onChannelMessage(async (data) => {
+  try {
+    const clan = await client.clans.fetch(data?.clan_id!);
+    const textChannels = Array.from(clan.channels.cache.values()).filter(
+      (c) => c instanceof TextChannel
+    );
 
+    if (textChannels.length > 0) {
+      console.error(`  📺 Text channels::`);
+      for (const channel of textChannels) {
+        console.error(`    - #${channel.name} (ID: ${channel.id})`);
+      }
+    } else {
+      console.error("⚠️No text channels available.");
+    }
+  } catch (error) {}
+});
 
-// Start the server
 async function main() {
   try {
     const token = process.env.MEZON_TOKEN;
@@ -364,10 +386,8 @@ async function main() {
       throw new Error("MEZON_TOKEN environment variable is not set");
     }
     try {
-      // Login to Mezon
       await client.login();
 
-      // Start MCP server
       const transport = new StdioServerTransport();
       await server.connect(transport);
       console.error("Mezon MCP Clan running on stdio");
@@ -375,7 +395,7 @@ async function main() {
       console.error("Fatal error in main():", error);
       process.exit(1);
     }
-  } catch (error) { }
+  } catch (error) {}
 }
 
 main();
