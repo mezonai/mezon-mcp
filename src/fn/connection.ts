@@ -9,14 +9,43 @@ export const client = new Client({
   },
 });
 
+let currentTransport: StdioClientTransport | null = null;
+let isConnecting = false;
+
 export const connectClient = async () => {
-  const transport = new StdioClientTransport({
-    command: "node",
-    args: ["./build/index.js"],
-  });
+  if (currentTransport) {
+    return currentTransport;
+  }
 
-  await client.connect(transport);
-  console.log("✅ Successfully connected to MCP server");
+  if (isConnecting) {
+    while (isConnecting) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return currentTransport;
+  }
 
-  return transport;
+  try {
+    isConnecting = true;
+    const transport = new StdioClientTransport({
+      command: "node",
+      args: ["./build/index.js"],
+    });
+
+    await client.connect(transport);
+    console.log("✅ Successfully connected to MCP server");
+    currentTransport = transport;
+    return transport;
+  } catch (error) {
+    console.error("Failed to connect to MCP server:", error);
+    throw error;
+  } finally {
+    isConnecting = false;
+  }
+};
+
+export const disconnectClient = async () => {
+  if (currentTransport) {
+    await currentTransport.close();
+    currentTransport = null;
+  }
 };

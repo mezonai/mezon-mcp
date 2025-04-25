@@ -1,4 +1,4 @@
-import { client } from "./connection.js";
+import { client, connectClient } from "./connection.js";
 
 interface McpResponse {
   content: Array<{
@@ -7,12 +7,17 @@ interface McpResponse {
   }>;
 }
 
-export const sendMessage = async (channel: string, message: string) => {
+export const sendMessage = async (
+  channel: string,
+  message: string,
+  server = "hello888"
+) => {
   try {
+    await connectClient();
     await client.callTool({
       name: "send-message",
       arguments: {
-        server: "hello888",
+        server: server,
         channel,
         message,
       },
@@ -39,10 +44,16 @@ export const askGemini = async (
       },
     })) as McpResponse;
 
+    if (response?.content?.[0]?.text === "send-message") return null;
+    if (response?.content?.[0]?.text === "read-message") return null;
+
     if (response?.content?.[0]?.text) {
       await sendMessage(channel, response.content[0].text);
     } else {
-      console.error("Invalid response format:", response);
+      await sendMessage(
+        channel,
+        "Tôi không thể thực hiện yêu cầu  vui lòng thử lại"
+      );
     }
     return response;
   } catch (err) {
@@ -51,12 +62,16 @@ export const askGemini = async (
   }
 };
 
-export const readMessages = async (channel: string, limit: number = 5) => {
+export const readMessages = async (
+  channel: string,
+  limit: number = 5,
+  server = "hello888"
+) => {
   try {
     return await client.callTool({
       name: "read-messages",
       arguments: {
-        server: "hello888",
+        server: server,
         channel,
         limit,
       },

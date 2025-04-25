@@ -88,7 +88,7 @@ async function findChannel(
         channel instanceof TextChannel &&
         (channel.name?.toLowerCase() === channelId.toLowerCase() ||
           channel.name?.toLowerCase() ===
-            channelId.toLowerCase().replace("#", ""))
+          channelId.toLowerCase().replace("#", ""))
     );
 
     if (channels.size === 0) {
@@ -268,7 +268,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "read-messages": {
-        
+
         const {
           server: serverId,
           channel: channelId,
@@ -279,7 +279,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const messages = channel.messages.values();
 
         const formattedMessages = Array.from(messages).map((msg) => ({
-          channel: `#${channel.name}`,
+          channel: `${channel.name}`,
           server: channel.clan.name,
           author: msg.sender_id,
           content: msg.content,
@@ -376,7 +376,7 @@ client.onChannelMessage(async (data) => {
     } else {
       console.error("⚠️No text channels available.");
     }
-  } catch (error) {}
+  } catch (error) { }
 });
 
 async function main() {
@@ -385,9 +385,9 @@ async function main() {
     if (!token) {
       throw new Error("MEZON_TOKEN environment variable is not set");
     }
+
     try {
       await client.login();
-
       const transport = new StdioServerTransport();
       await server.connect(transport);
       console.error("Mezon MCP Clan running on stdio");
@@ -395,7 +395,10 @@ async function main() {
       console.error("Fatal error in main():", error);
       process.exit(1);
     }
-  } catch (error) {}
+  } catch (error) {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  }
 }
 
 main();
