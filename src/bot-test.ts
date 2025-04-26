@@ -1,21 +1,14 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MezonClient } from "mezon-sdk";
 import { TextChannel } from "mezon-sdk/dist/cjs/mezon-client/structures/TextChannel.js";
-import { processWithGemini } from "./gemini.js";
 import dotenv from "dotenv";
+import { connectClient } from "./fn/connection.js";
+import { askGemini, readMessages, sendMessage } from "./fn/handleTool.js";
 
 dotenv.config();
 
 const mezonClient = new MezonClient(process.env.MEZON_TOKEN || "");
 
-const client = new Client({
-  name: "mezon-bot",
-  version: "1.0.0",
-  capabilities: {
-    tools: ["send-message", "read-messages", "ask-gemini"],
-  },
-});
+let messages: any[] = [];
 
 const commands = {
   help: {
@@ -42,8 +35,17 @@ const commands = {
         return;
       }
       const question = args.join(" ");
-      const response = await processWithGemini(question);
-      await sendMessage(channel, response);
+
+      try {
+        console.error("Contents gửi context:", messages);
+        await askGemini(channel, question, messages);
+      } catch (err) {
+        console.error("Error getting tools:", err);
+        await sendMessage(
+          channel,
+          "Xin lỗi, có lỗi xảy ra khi lấy danh sách công cụ."
+        );
+      }
     },
   },
   ping: {
@@ -73,115 +75,57 @@ const commands = {
   },
 };
 
-async function sendMessage(channel: string, message: string) {
-  try {
-    const result = await client.callTool({
-      name: "send-message",
-      arguments: {
-        server: "hello888",
-        channel: channel,
-        message: message,
-      },
-    });
-    console.log("Message sent:", result);
-  } catch (err) {
-    console.error("Error sending message:", err);
-  }
-}
-
-async function readMessages(channel: string, limit: number = 5) {
-  try {
-    const result = await client.callTool({
-      name: "read-messages",
-      arguments: {
-        server: "hello888",
-        channel: channel,
-        limit: limit,
-      },
-    });
-
-    return result;
-  } catch (err) {
-    console.error("Error reading messages:", err);
-    return null;
-  }
-}
-
-async function handleCommand(channel: string, message: string) {
-  const args = message.slice(1).trim().split(/ +/);
-  const command = args.shift()?.toLowerCase();
-
-  if (!command || !(command in commands)) {
-    return false;
-  }
-
-  try {
-    await commands[command as keyof typeof commands].execute(channel, args);
-    return true;
-  } catch (err) {
-    console.error(`Error executing command ${command}:`, err);
-    await sendMessage(
-      channel,
-      "❌ An error occurred while executing the command."
-    );
-    return true;
-  }
+interface McpResponse {
+  content: Array<{
+    type: string;
+    text: string;
+  }>;
 }
 
 const activeSessions = new Map<string, boolean>();
 
-const checkNewMessages = async () => {
+const checkNewMessages = async (data: any) => {
+  if (data.sender_id === process.env.BOT) return;
   try {
-    const result = await readMessages("1840681202449649664", 1);
+    const result = await readMessages(data?.channel_id, 5);
     if (!result) {
       console.log("No messages received");
       return;
     }
 
-    let messages = [];
     if (Array.isArray(result.content) && result.content[0]?.text) {
       try {
         messages = JSON.parse(result.content[0].text);
-        console.log("Parsed messages:", messages);
       } catch (parseError) {
         console.error("Error parsing messages:", parseError);
         return;
       }
     } else {
-      console.error("Invalid content format in result:", result.content);
       return;
     }
 
     const lastMessage = messages[messages.length - 1];
-    if (!lastMessage || typeof lastMessage !== "object") return;
-
-    if (!lastMessage.channel || typeof lastMessage.channel !== "string") {
-      console.log("Invalid message channel:", lastMessage);
-      return;
-    }
-
-    if (lastMessage.author.includes(process.env.BOT || "bot")) {
-      console.log("Message from bot, skipping:", lastMessage);
-      return;
-    }
 
     const sessionKey = `${lastMessage.channel}:${lastMessage.author}`;
-    const messageText = lastMessage?.content?.t;
 
-    if (typeof messageText === "string" && messageText.startsWith("!")) {
-      const args = messageText.slice(1).trim().split(/ +/);
+    if (
+      typeof data?.content?.t === "string" &&
+      data?.content?.t.startsWith("!")
+    ) {
+      const args = data?.content?.t.slice(1).trim().split(/ +/);
       const command = args.shift()?.toLowerCase();
 
       if (!command || !(command in commands)) return;
 
       try {
         await commands[command as keyof typeof commands].execute(
-          lastMessage.channel,
+          data.channel_id,
           args
         );
 
         if (command === "ask") {
           activeSessions.set(sessionKey, true);
+          return;
         } else if (command === "close") {
           activeSessions.delete(sessionKey);
         }
@@ -190,7 +134,7 @@ const checkNewMessages = async () => {
       } catch (err) {
         console.error(`Error executing command ${command}:`, err);
         await sendMessage(
-          lastMessage.channel,
+          data.channel_id,
           "❌ Đã xảy ra lỗi khi thực thi lệnh."
         );
         return;
@@ -198,8 +142,7 @@ const checkNewMessages = async () => {
     }
 
     if (activeSessions.has(sessionKey)) {
-      const response = await processWithGemini(messageText);
-      await sendMessage(lastMessage.channel, response);
+      await askGemini(lastMessage.channel_id, data?.content?.t, messages);
     }
   } catch (error) {
     console.error("Unhandled error in onChannelMessage:", error);
@@ -209,20 +152,29 @@ const checkNewMessages = async () => {
 async function main() {
   let transport;
   try {
+    // Connect to MCP client first
+    transport = await connectClient();
+    console.log("✅ Connected to MCP server");
+
+    // Then connect to Mezon client
     await mezonClient.login();
     console.log("✅ Mezon bot is ready!");
 
-    mezonClient.once("ready", () => {});
-
-    mezonClient.onChannelMessage(async (data) => {
-      checkNewMessages();
+    // Set up event listeners
+    mezonClient.once("ready", () => {
+      console.log("✅ Mezon client is ready");
     });
 
+    mezonClient.onChannelMessage(async (data) => {
+      console.error("Received message:", data);
+      await checkNewMessages(data);
+    });
+
+    // Check if bot is in any clans
     if (mezonClient.clans.size === 0) {
       console.error("⚠️ Bot has not joined any clan yet.");
       return;
     }
-
     console.error("📋 Bots are in clans:");
     for (const clan of mezonClient.clans.values()) {
       console.error(`- ${clan.name} (ID: ${clan.id})`);
@@ -237,20 +189,6 @@ async function main() {
         }
       }
     }
-
-    transport = new StdioClientTransport({
-      command: "node",
-      args: ["./build/index.js"],
-    });
-
-    await client.connect(transport);
-    console.log("Successfully connected to MCP server");
-
-    const welcomeMessage =
-      "Xin chào! Tôi là bot được tích hợp với Gemini AI. Gõ !help để xem danh sách lệnh.";
-    await sendMessage("1840681202449649664", welcomeMessage);
-
-    // setInterval(checkNewMessages, 10000);
   } catch (err) {
     console.error("Error occurred:", err);
     if (transport) {
@@ -260,17 +198,4 @@ async function main() {
   }
 }
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  process.exit(1);
-});
-
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-  process.exit(1);
-});
-
-main().catch((err) => {
-  console.error("Fatal error:", err);
-  process.exit(1);
-});
+main();
